@@ -4,7 +4,7 @@ import * as ai from './ai.js'
 import { PIECES_SVG } from './pieces.js'
 
 const { widget } = figma
-const { Frame, AutoLayout, SVG, Text, useSyncedState, usePropertyMenu, useEffect, waitForTask, useWidgetId } = widget
+const { Frame, AutoLayout, SVG, Text, useSyncedState, usePropertyMenu, useEffect, waitForTask } = widget
 
 function Chess() {
   const newBoardFen = (): string => {
@@ -16,9 +16,6 @@ function Chess() {
   // Stores a selected square in algebraic notation.
   const [selected, setSelected] = widget.useSyncedState<string>("selected", null)
   const [computer, setComputer] = widget.useSyncedState<boolean>("computer", false)
-
-  const widgetId = useWidgetId();
-  const widgetNode = figma.getNodeById(widgetId) as WidgetNode
 
   const chess = new chessLib.Chess(boardFen)
   const board: any[][] = chess.board()
@@ -65,125 +62,54 @@ function Chess() {
   })()
 
   const select = ({ row, column }) => {
-    return new Promise(() => {
-      console.log("running code!")
+    if (endGameCondition.length > 0) {
+      return
+    }
 
-      const widgetWidth = widgetNode.width
-      const widgetHeight = widgetNode.height
-
-      let angle = 0
-
-      // const translationMatrix = [
-      //   [1, 0, widgetWidth / 2],
-      //   [0, 1, widgetHeight / 2],
-      //   [0, 0, 1]
-      // ]
-      // const rotationMatrix = [
-      //   [Math.cos(angle), Math.sin(angle), 0],
-      //   [-Math.sin(angle), Math.cos(angle), 0]
-      // ]
-
-      // widgetNode.relativeTransform = [
-      //   [Math.cos(angle), Math.sin(angle), widgetWidth / 2],
-      //   [-Math.sin(angle), Math.cos(angle), widgetHeight / 2]
-      // ]
-
-      // let angle = 45
-      let intervalExit = 0
-
-      let sel = widgetNode
-      //cx,cy is the center of the node
-
-      // let cx = sel.x + sel.width / 2
-      // let cy = sel.y + sel.height / 2
-
-      let cx = sel.absoluteTransform[0][2] + sel.width / 2
-      let cy = sel.absoluteTransform[1][2] + sel.height / 2
-
-      let animate = () => {
-        console.log(`absolute transform: ${sel.absoluteTransform}`)
-        console.log("running once")
-        angle += 1
-        if (angle > 100) {
-          console.log("clearing interval")
-          clearInterval(intervalExit)
-        }
-        let theta = angle * (Math.PI / 180) //radians
-
-
-        console.log(`rotation angle: ${angle}, widget x center: ${cx}, widget y center: ${cy}`)
-        let newx = Math.cos(theta) * sel.x + sel.y * Math.sin(theta) - cy * Math.sin(theta) - cx * Math.cos(theta) + cx
-        let newy = - Math.sin(theta) * sel.x + cx * Math.sin(theta) + sel.y * Math.cos(theta) - cy * Math.cos(theta) + cy
-
-        sel.relativeTransform = [[Math.cos(theta), Math.sin(theta), newx],
-        [-Math.sin(theta), Math.cos(theta), newy]]
-      }
-      intervalExit = setInterval(animate, 20)
-
-
-      // const container = figma.createFrame();
-      // container.clipsContent = true;
-      // container.resize(200, 200);
-      // container.cornerRadius = 12;
-      // container.fills = [
-      //   {
-      //     type: 'SOLID',
-      //     color: { r: 0, g: 0, b: 1 }
-      //   },
-      // ];
-      // container.x = widgetNode.x
-      // container.y = widgetNode.y
-
-
-      if (endGameCondition.length > 0) {
-        return
-      }
-
-      const position = indexToPositionString(row, column)
-      if (selected && selected === position) {
+    const position = indexToPositionString(row, column)
+    if (selected && selected === position) {
+      setSelected(null)
+    } else if (selected) {
+      const move = { from: selected, to: position }
+      if (chess.move(move)) {
+        setBoardFen(chess.fen())
         setSelected(null)
-      } else if (selected) {
-        const move = { from: selected, to: position }
-        if (chess.move(move)) {
-          setBoardFen(chess.fen())
-          setSelected(null)
 
-          if (computer) {
-            // Playing against AI.
-            const notification = figma.notify("Computing move...")
-            waitForTask(new Promise<void>(resolve => {
-              setTimeout(() => {
-                const move = ai.getBestMove(chess, chess.turn(), 0)[0];
+        if (computer) {
+          // Playing against AI.
+          const notification = figma.notify("Computing move...")
+          waitForTask(new Promise<void>(resolve => {
+            setTimeout(() => {
+              const move = ai.getBestMove(chess, chess.turn(), 0)[0];
 
-                if (chess.move(move)) {
-                  setBoardFen(chess.fen())
-                  setSelected(null)
-                  notification.cancel()
-                } else {
-                  // Must be end of game!
-                }
-                resolve()
-              }, 50);
-            }))
-          }
-        } else {
-          if (chess.in_check()) {
-            figma.notify("You're in check! 😬", { timeout: 2000 })
-          } else {
-            figma.notify("Legal moves only, please! 😊", { timeout: 2000 })
-          }
-          setSelected(null)
+              if (chess.move(move)) {
+                setBoardFen(chess.fen())
+                setSelected(null)
+                notification.cancel()
+              } else {
+                // Must be end of game!
+              }
+              resolve()
+            }, 50);
+          }))
         }
       } else {
-        if (board[row][column] && board[row][column].color === chess.turn()) {
-          // Only select non-empty cells of the correct color.
-          setSelected(position)
-        } else if (board[row][column]) {
-          const color = chess.turn()
-          figma.notify(`It's currently ${color === 'b' ? 'black' : 'white'}'s turn`, { timeout: 2000 })
+        if (chess.in_check()) {
+          figma.notify("You're in check! 😬", { timeout: 2000 })
+        } else {
+          figma.notify("Legal moves only, please! 😊", { timeout: 2000 })
         }
+        setSelected(null)
       }
-    })
+    } else {
+      if (board[row][column] && board[row][column].color === chess.turn()) {
+        // Only select non-empty cells of the correct color.
+        setSelected(position)
+      } else if (board[row][column]) {
+        const color = chess.turn()
+        figma.notify(`It's currently ${color === 'b' ? 'black' : 'white'}'s turn`, { timeout: 2000 })
+      }
+    }
   }
 
   // Converts an index into the 2D board array to algebraic notation.
@@ -195,8 +121,7 @@ function Chess() {
   }
 
   // const boards = [];
-  // const boards = (computer ? ['w'] : ['w', 'b']).map(color => {
-  const boards = (computer ? ['w'] : ['w']).map(color => {
+  const boards = (computer ? ['w'] : ['w', 'b']).map(color => {
     const flipped = 'b' === color
     let flippedBoard
     if (flipped) {
@@ -236,7 +161,7 @@ function Chess() {
               // Cells are only clickable if they contain a piece or we've already
               // selected a piece.
               onClick={cell || selected ? () => {
-                return select({
+                select({
                   row: rowIndex,
                   column: columnIndex
                 });

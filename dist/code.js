@@ -2236,7 +2236,7 @@ height="45">
 
   // widget-src/code.tsx
   var { widget } = figma;
-  var { Frame, AutoLayout, SVG, Text, useSyncedState, usePropertyMenu, useEffect, waitForTask, useWidgetId } = widget;
+  var { Frame, AutoLayout, SVG, Text, useSyncedState, usePropertyMenu, useEffect, waitForTask } = widget;
   function Chess2() {
     const newBoardFen = () => {
       const board2 = new Chess();
@@ -2245,8 +2245,6 @@ height="45">
     const [boardFen, setBoardFen] = widget.useSyncedState("boardFen", newBoardFen());
     const [selected, setSelected] = widget.useSyncedState("selected", null);
     const [computer, setComputer] = widget.useSyncedState("computer", false);
-    const widgetId = useWidgetId();
-    const widgetNode = figma.getNodeById(widgetId);
     const chess = new Chess(boardFen);
     const board = chess.board();
     const propertyMenu = [
@@ -2286,81 +2284,53 @@ height="45">
       }
     })();
     const select = ({ row, column }) => {
-      return new Promise(() => {
-        console.log("running code!");
-        const widgetWidth = widgetNode.width;
-        const widgetHeight = widgetNode.height;
-        let angle = 0;
-        let intervalExit = 0;
-        let sel = widgetNode;
-        let cx = sel.absoluteTransform[0][2] + sel.width / 2;
-        let cy = sel.absoluteTransform[1][2] + sel.height / 2;
-        let animate = () => {
-          console.log(`absolute transform: ${sel.absoluteTransform}`);
-          console.log("running once");
-          angle += 1;
-          if (angle > 100) {
-            console.log("clearing interval");
-            clearInterval(intervalExit);
-          }
-          let theta = angle * (Math.PI / 180);
-          console.log(`rotation angle: ${angle}, widget x center: ${cx}, widget y center: ${cy}`);
-          let newx = Math.cos(theta) * sel.x + sel.y * Math.sin(theta) - cy * Math.sin(theta) - cx * Math.cos(theta) + cx;
-          let newy = -Math.sin(theta) * sel.x + cx * Math.sin(theta) + sel.y * Math.cos(theta) - cy * Math.cos(theta) + cy;
-          sel.relativeTransform = [
-            [Math.cos(theta), Math.sin(theta), newx],
-            [-Math.sin(theta), Math.cos(theta), newy]
-          ];
-        };
-        intervalExit = setInterval(animate, 20);
-        if (endGameCondition.length > 0) {
-          return;
-        }
-        const position = indexToPositionString(row, column);
-        if (selected && selected === position) {
+      if (endGameCondition.length > 0) {
+        return;
+      }
+      const position = indexToPositionString(row, column);
+      if (selected && selected === position) {
+        setSelected(null);
+      } else if (selected) {
+        const move = { from: selected, to: position };
+        if (chess.move(move)) {
+          setBoardFen(chess.fen());
           setSelected(null);
-        } else if (selected) {
-          const move = { from: selected, to: position };
-          if (chess.move(move)) {
-            setBoardFen(chess.fen());
-            setSelected(null);
-            if (computer) {
-              const notification = figma.notify("Computing move...");
-              waitForTask(new Promise((resolve) => {
-                setTimeout(() => {
-                  const move2 = getBestMove(chess, chess.turn(), 0)[0];
-                  if (chess.move(move2)) {
-                    setBoardFen(chess.fen());
-                    setSelected(null);
-                    notification.cancel();
-                  } else {
-                  }
-                  resolve();
-                }, 50);
-              }));
-            }
-          } else {
-            if (chess.in_check()) {
-              figma.notify("You're in check! \u{1F62C}", { timeout: 2e3 });
-            } else {
-              figma.notify("Legal moves only, please! \u{1F60A}", { timeout: 2e3 });
-            }
-            setSelected(null);
+          if (computer) {
+            const notification = figma.notify("Computing move...");
+            waitForTask(new Promise((resolve) => {
+              setTimeout(() => {
+                const move2 = getBestMove(chess, chess.turn(), 0)[0];
+                if (chess.move(move2)) {
+                  setBoardFen(chess.fen());
+                  setSelected(null);
+                  notification.cancel();
+                } else {
+                }
+                resolve();
+              }, 50);
+            }));
           }
         } else {
-          if (board[row][column] && board[row][column].color === chess.turn()) {
-            setSelected(position);
-          } else if (board[row][column]) {
-            const color = chess.turn();
-            figma.notify(`It's currently ${color === "b" ? "black" : "white"}'s turn`, { timeout: 2e3 });
+          if (chess.in_check()) {
+            figma.notify("You're in check! \u{1F62C}", { timeout: 2e3 });
+          } else {
+            figma.notify("Legal moves only, please! \u{1F60A}", { timeout: 2e3 });
           }
+          setSelected(null);
         }
-      });
+      } else {
+        if (board[row][column] && board[row][column].color === chess.turn()) {
+          setSelected(position);
+        } else if (board[row][column]) {
+          const color = chess.turn();
+          figma.notify(`It's currently ${color === "b" ? "black" : "white"}'s turn`, { timeout: 2e3 });
+        }
+      }
     };
     const indexToPositionString = (row, column) => {
       return String.fromCharCode(97 + column) + (8 - row);
     };
-    const boards = (computer ? ["w"] : ["w"]).map((color) => {
+    const boards = (computer ? ["w"] : ["w", "b"]).map((color) => {
       const flipped = color === "b";
       let flippedBoard;
       if (flipped) {
@@ -2392,7 +2362,7 @@ height="45">
         }, row.map((cell, columnIndex) => /* @__PURE__ */ figma.widget.h(AutoLayout, {
           fill: selected && selected === indexToPositionString(rowIndex, columnIndex) ? "#F7F586" : (rowIndex + columnIndex) % 2 == 0 ? "#ECEED4" : "#78955B",
           onClick: cell || selected ? () => {
-            return select({
+            select({
               row: rowIndex,
               column: columnIndex
             });
