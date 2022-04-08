@@ -1,0 +1,11 @@
+{
+  "name": "Chess",
+  "id": "1032204675316247617",
+  "api": "1.0.0",
+  "editorType": ["figjam"],
+  "permissions": ["currentuser"],
+  "containsWidget": true,
+  "main": "dist/code.js",
+  "ui": "dist/index.html",
+  "widgetApi": "1.0.0"
+}
