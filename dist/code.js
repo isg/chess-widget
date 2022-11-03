@@ -2245,8 +2245,10 @@ height="45">
     const [boardFen, setBoardFen] = widget.useSyncedState("boardFen", newBoardFen());
     const [selected, setSelected] = widget.useSyncedState("selected", null);
     const [computer, setComputer] = widget.useSyncedState("computer", false);
+    const [promoMove, setPromoMove] = widget.useSyncedState("promoMove", null);
     const chess = new Chess(boardFen);
     const board = chess.board();
+    const promoPieces = ["q", "r", "b", "n"];
     const propertyMenu = [
       {
         tooltip: "New Game (2 Players)",
@@ -2263,10 +2265,12 @@ height="45">
       if (propertyName === "reset") {
         setBoardFen(newBoardFen());
         setSelected(null);
+        setPromoMove(null);
         setComputer(false);
       } else if (propertyName === "reset-computer") {
         setBoardFen(newBoardFen());
         setSelected(null);
+        setPromoMove(null);
         setComputer(true);
       }
     }));
@@ -2283,6 +2287,69 @@ height="45">
         return "";
       }
     })();
+    const promoMenu = (color) => {
+      const active = promoMove !== null && chess.turn() === color;
+      return /* @__PURE__ */ figma.widget.h(AutoLayout, {
+        direction: "horizontal",
+        horizontalAlignItems: "center",
+        verticalAlignItems: "center",
+        height: "hug-contents",
+        width: "hug-contents",
+        key: `promo:${color}`
+      }, promoPieces.map((piece) => {
+        return /* @__PURE__ */ figma.widget.h(AutoLayout, {
+          opacity: active ? 1 : 0,
+          onClick: active ? () => {
+            applyMove({ from: promoMove.from, to: promoMove.to, promotion: piece });
+            setPromoMove(null);
+          } : null,
+          key: `promo:${color}:${piece}`
+        }, /* @__PURE__ */ figma.widget.h(SVG, {
+          src: PIECES_SVG[color][piece],
+          height: 50,
+          width: 50
+        }));
+      }));
+    };
+    const applyMove = (move) => {
+      if (chess.move(move)) {
+        setBoardFen(chess.fen());
+        setSelected(null);
+        if (computer) {
+          const notification = figma.notify("Computing move...");
+          waitForTask(new Promise((resolve) => {
+            setTimeout(() => {
+              const move2 = getBestMove(chess, chess.turn(), 0)[0];
+              if (chess.move(move2)) {
+                setBoardFen(chess.fen());
+                setSelected(null);
+                notification.cancel();
+              } else {
+              }
+              resolve();
+            }, 50);
+          }));
+        }
+      } else {
+        if (chess.in_check()) {
+          figma.notify("You're in check! \u{1F62C}", { timeout: 2e3 });
+        } else {
+          figma.notify("Legal moves only, please! \u{1F60A}", { timeout: 2e3 });
+        }
+        setSelected(null);
+      }
+    };
+    const isPromoMove = (move) => {
+      const piece = chess.get(move.from);
+      console.log(`Checking for promo move: ${piece == null ? void 0 : piece.type}, ${piece == null ? void 0 : piece.color}, ${move.to}`);
+      if (piece === null || (piece == null ? void 0 : piece.type) !== "p" || (piece == null ? void 0 : piece.color) !== chess.turn()) {
+        return false;
+      } else if ((piece == null ? void 0 : piece.color) === "w") {
+        return move.to.charAt(1) === "8";
+      } else {
+        return move.to.charAt(1) === "1";
+      }
+    };
     const select = ({ row, column }) => {
       if (endGameCondition.length > 0) {
         return;
@@ -2292,31 +2359,11 @@ height="45">
         setSelected(null);
       } else if (selected) {
         const move = { from: selected, to: position };
-        if (chess.move(move)) {
-          setBoardFen(chess.fen());
-          setSelected(null);
-          if (computer) {
-            const notification = figma.notify("Computing move...");
-            waitForTask(new Promise((resolve) => {
-              setTimeout(() => {
-                const move2 = getBestMove(chess, chess.turn(), 0)[0];
-                if (chess.move(move2)) {
-                  setBoardFen(chess.fen());
-                  setSelected(null);
-                  notification.cancel();
-                } else {
-                }
-                resolve();
-              }, 50);
-            }));
-          }
+        if (isPromoMove(move)) {
+          setPromoMove(move);
+          figma.notify("Promote your pawn!", { timeout: 2e3 });
         } else {
-          if (chess.in_check()) {
-            figma.notify("You're in check! \u{1F62C}", { timeout: 2e3 });
-          } else {
-            figma.notify("Legal moves only, please! \u{1F60A}", { timeout: 2e3 });
-          }
-          setSelected(null);
+          applyMove(move);
         }
       } else {
         if (board[row][column] && board[row][column].color === chess.turn()) {
@@ -2339,6 +2386,13 @@ height="45">
         flippedBoard = board;
       }
       return /* @__PURE__ */ figma.widget.h(AutoLayout, {
+        direction: "vertical",
+        horizontalAlignItems: "center",
+        verticalAlignItems: "center",
+        height: "hug-contents",
+        width: "hug-contents",
+        key: `wrapper:${color}`
+      }, promoMenu(color), /* @__PURE__ */ figma.widget.h(AutoLayout, {
         direction: "vertical",
         horizontalAlignItems: "center",
         verticalAlignItems: "center",
@@ -2376,7 +2430,7 @@ height="45">
           width: 100,
           height: 100
         }))));
-      }));
+      })));
     });
     return /* @__PURE__ */ figma.widget.h(AutoLayout, {
       direction: "vertical",
