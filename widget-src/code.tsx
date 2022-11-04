@@ -1,5 +1,6 @@
 import { number } from 'prop-types'
 import * as chessLib from './chess.js'
+import * as chess960Lib from './chess960.js'
 import * as ai from './ai.js'
 import { PIECES_SVG } from './pieces.js'
 
@@ -14,18 +15,20 @@ interface Move {
 
 function Chess() {
   const newBoardFen = (): string => {
-    const board = new chessLib.Chess()
+    const board = play960 ? new chess960Lib.Chess() : new chessLib.Chess()
     return board.fen()
   }
 
+  const [play960, setPlay960] = widget.useSyncedState<boolean>("play960", false)
   const [boardFen, setBoardFen] = widget.useSyncedState<string>("boardFen", newBoardFen())
   // Stores a selected square in algebraic notation.
   const [selected, setSelected] = widget.useSyncedState<string>("selected", null)
   const [computer, setComputer] = widget.useSyncedState<boolean>("computer", false)
   const [promoMove, setPromoMove] = widget.useSyncedState<Move>("promoMove", null)
 
-  const chess = new chessLib.Chess(boardFen)
-  const board: any[][] = chess.board()
+
+  let chess = new chessLib.Chess(boardFen)
+  let board: any[][] = chess.board()
 
   const promoPieces: string[] = ['q', 'r', 'b', 'n']
 
@@ -33,6 +36,11 @@ function Chess() {
     {
       tooltip: 'New Game (2 Players)',
       propertyName: 'reset',
+      itemType: 'action',
+    },
+    {
+      tooltip: 'New Chess960 Game (2 Players)',
+      propertyName: 'reset960',
       itemType: 'action',
     },
     {
@@ -49,6 +57,13 @@ function Chess() {
         setSelected(null)
         setPromoMove(null)
         setComputer(false)
+      } else if (propertyName === 'reset960') {
+        chess = chess960Lib.Chess(generate960StartFen())
+        board = chess.board()
+        setBoardFen(chess.fen())
+        setSelected(null)
+        setPromoMove(null)
+        setComputer(false)
       } else if (propertyName === 'reset-computer') {
         setBoardFen(newBoardFen())
         setSelected(null)
@@ -57,6 +72,41 @@ function Chess() {
       }
     },
   )
+
+  const generate960StartFen = (): string => {
+    // one light square and one dark squared bishop
+    // one rook on either side of the king
+
+    var rank = new Array(8)
+    // randomizer
+    const d = (num: number): number => { return Math.floor(Math.random() * ++num) }
+    const emptySquares = () => {
+      let arr = []
+      for (let i = 0; i < 8; i++) if (rank[i] == undefined) arr.push(i)
+      return arr
+    }
+    // place one bishop on any black square
+    rank[d(2) * 2] = "b"
+    // place the other bishop on any white square
+    rank[d(2) * 2 + 1] = "b"
+    // place the queen on any empty square
+    rank[emptySquares()[d(5)]] = "q"
+    // place one knight on any empty square
+    rank[emptySquares()[d(4)]] = "n"
+    // place the other knight on any empty square
+    rank[emptySquares()[d(3)]] = "n"
+    // place the rooks and the king on the squares left, king in the middle
+    for (var x = 1; x <= 3; x++) rank[emptySquares()[0]] = x==2 ? "k" : "r"
+
+    // return X-FEN format accpeted by the chess960.js lib accepts
+    // unfortunately there is no standard
+    let fen = ""
+    for (let i = 0; i < rank.length; i++) { fen += rank[i] }
+    fen += "/pppppppp/8/8/8/8/PPPPPPPP/"
+    for (let i = 0; i < rank.length; i++) { fen += rank[i].toUpperCase() }
+    fen += " w KQkq - 0 1"
+    return fen
+  }
 
   const endGameCondition: string = (() => {
     if (chess.in_checkmate()) {
